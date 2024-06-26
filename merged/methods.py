@@ -1,19 +1,14 @@
-import csv
 import time
-import sys
 import math
 from operator import itemgetter
 import pandas as pd
 from Bio import SeqIO
-import re
-import bisect
 from bisect import bisect_left
 from scipy.stats import chisquare
 import peakutils
 import numpy as np
 import os
-import subprocess
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 
 
 class Stack:
@@ -46,6 +41,28 @@ def bi_contains(lst, item):
     return bisect_left(lst, item)
 
 
+############################################################
+# OLD CODE: SamtoText Sequential Version				   #
+############################################################
+def SamtoTextSequential(input_path, bamfile, chromosomes):
+    output_dir = os.path.join(input_path, bamfile[:-4])
+    os.makedirs(output_dir, exist_ok=True)
+    samtools_dir = "/usr/bin/samtools-0.1.8/samtools"
+    cmd1 = samtools_dir + " index " + os.path.join(input_path, bamfile)  # make samtools index bamfile.bam.bai
+    os.system(cmd1)
+
+    print(bamfile, "...")
+    for chrom in chromosomes:
+        cmd2 = samtools_dir + " view -b " + os.path.join(input_path, bamfile) + " " + chrom + " -o " + os.path.join(output_dir, chrom + ".bam")
+        cmd3 = samtools_dir + " pileup " + os.path.join(output_dir, chrom + ".bam") + " | cut -f 2,4 > " + os.path.join(output_dir, chrom + ".txt")  ### Need to use pileup, not mpileup
+        command = cmd2 + ";" + cmd3
+        os.system(command)
+    return
+
+
+############################################################
+# NEW CODE: SamtoText Paralell Version					   #
+############################################################
 def process_chromosome(args):
     samtools_dir, input_path, bamfile, output_dir, chrom = args
     cmd2 = f"{samtools_dir} view -b {os.path.join(input_path, bamfile)} {chrom} -o {os.path.join(output_dir, chrom + '.bam')}"
@@ -57,7 +74,7 @@ def process_chromosome(args):
     return
 
 
-def SamtoText(input_path, bamfile, chromosomes, cores):
+def SamtoTextParallel(input_path, bamfile, chromosomes, cores):
     output_dir = os.path.join(input_path, bamfile[:-4])
     samtools_dir = "/usr/bin/samtools-0.1.8/samtools"
     os.makedirs(output_dir, exist_ok=True)
@@ -66,17 +83,16 @@ def SamtoText(input_path, bamfile, chromosomes, cores):
     cmd1 = f"{samtools_dir} index {os.path.join(input_path, bamfile)}"
     os.system(cmd1)
 
-    print(f"Processing {bamfile} with {cores} cores...")
+    print(f"Processing {bamfile}...")
 
     # Prepare arguments for parallel processing
-    args = [
-        (samtools_dir, input_path, bamfile, output_dir, chrom) for chrom in chromosomes
-    ]
+    args = [(samtools_dir, input_path, bamfile, output_dir, chrom) for chrom in chromosomes]
 
+    # Process each chromosome in parallel
     with Pool(int(cores)) as pool:
         pool.map(process_chromosome, args)
 
-    print(f"Completed processing {bamfile}.")
+    print(f"Completed processing {bamfile}...")
     return
 
 
@@ -90,11 +106,7 @@ def getFinalTargetRegion(inputList):
         stacktop = st.top()
         if inputList[i][0] < stacktop[0] and inputList[i][1] < stacktop[0]:
             st.push(inputList[i])
-        elif (
-            inputList[i][0] < stacktop[0]
-            and inputList[i][1] > stacktop[0]
-            and inputList[i][1] < stacktop[1]
-        ):
+        elif inputList[i][0] < stacktop[0] and inputList[i][1] > stacktop[0] and inputList[i][1] < stacktop[1]:
             st.pop()
             st.push((inputList[i][0], stacktop[1]))
         elif inputList[i][1] == stacktop[1] and inputList[i][0] < stacktop[0]:
@@ -137,10 +149,7 @@ def CountReadCoverage(chrom, start, end, bam_list, position_row):
 
 
 def read_bamfiles(input_dir, sample, chrom):
-    ss = time.time()
-    bam_df = pd.read_csv(
-        os.path.join(input_dir, sample, chrom + ".txt"), delimiter="\t"
-    )
+    bam_df = pd.read_csv(os.path.join(input_dir, sample, chrom + ".txt"), delimiter="\t")
     position_row = bam_df.iloc[:, 0].tolist()
     bam_list = bam_df.values.tolist()
     return bam_list, position_row
@@ -173,11 +182,7 @@ def getFinalTargetRegion(inputList):
         stacktop = st.top()
         if inputList[i][0] < stacktop[0] and inputList[i][1] < stacktop[0]:
             st.push(inputList[i])
-        elif (
-            inputList[i][0] < stacktop[0]
-            and inputList[i][1] > stacktop[0]
-            and inputList[i][1] < stacktop[1]
-        ):
+        elif inputList[i][0] < stacktop[0] and inputList[i][1] > stacktop[0] and inputList[i][1] < stacktop[1]:
             st.pop()
             st.push((inputList[i][0], stacktop[1]))
         elif inputList[i][1] == stacktop[1] and inputList[i][0] < stacktop[0]:
@@ -213,9 +218,7 @@ def makeSplittedList(position_row, bam_list, start, end):
     return (p, r)
 
 
-def calculatePeaksWithVallys(
-    peakAreaPos, peakAreaRead, indexes, allStartPoint, allEndPoint
-):
+def calculatePeaksWithVallys(peakAreaPos, peakAreaRead, indexes, allStartPoint, allEndPoint):
     peakRangeList = []
     peakStartPoint = allStartPoint
     prevPeakValue = 0
@@ -230,26 +233,13 @@ def calculatePeaksWithVallys(
 
         if valley < 0.3 * min(peakAreaRead[indexes[k]], peakAreaRead[indexes[k + 1]]):
             peakEndPoint = actualValleyPos
-            peakRangeList.append(
-                (
-                    peakAreaPos[
-                        peakAreaRead.index(max(prevPeakValue, peakAreaRead[indexes[k]]))
-                    ],
-                    peakStartPoint,
-                    peakEndPoint,
-                )
-            )
+            peakRangeList.append((peakAreaPos[peakAreaRead.index(max(prevPeakValue, peakAreaRead[indexes[k]]))], peakStartPoint, peakEndPoint))
             prevPeakValue = 0
             peakStartPoint = actualValleyPos + 1
         else:
             prevPeakValue = max(prevPeakValue, peakAreaRead[indexes[k]])
 
-    ind = [
-        i
-        for i, value in enumerate(peakAreaRead)
-        if value == max(prevPeakValue, peakAreaRead[indexes[indexLen - 1]])
-        and peakAreaPos[i] >= peakStartPoint
-    ]
+    ind = [i for i, value in enumerate(peakAreaRead) if value == max(prevPeakValue, peakAreaRead[indexes[indexLen - 1]]) and peakAreaPos[i] >= peakStartPoint]
 
     # because ind is a list with indexes of the maxpeak value, for that we will take ind[0] (ind[0] or ind[1] are the indices of the same value)
     peakRangeList.append((peakAreaPos[ind[0]], peakStartPoint, allEndPoint))
@@ -280,21 +270,15 @@ def findPeakPosition(p, r):
             np_peakAreaPos = np.array(peakAreaPos)
             np_peakAreaRead = np.array(peakAreaRead)
 
-            indexes = peakutils.indexes(
-                np_peakAreaRead, thres=6, min_dist=35, thres_abs=True
-            )
+            indexes = peakutils.indexes(np_peakAreaRead, thres=6, min_dist=35, thres_abs=True)
 
             numberOfIndex = len(indexes)
 
             if numberOfIndex == 1:
-                listOfPeakRange.append(
-                    (peakAreaPos[indexes[0]], peakStartPoint, peakEndPoint)
-                )
+                listOfPeakRange.append((peakAreaPos[indexes[0]], peakStartPoint, peakEndPoint))
 
             elif numberOfIndex > 1:
-                peakRangeList = calculatePeaksWithVallys(
-                    peakAreaPos, peakAreaRead, indexes, peakStartPoint, peakEndPoint
-                )
+                peakRangeList = calculatePeaksWithVallys(peakAreaPos, peakAreaRead, indexes, peakStartPoint, peakEndPoint)
 
                 listOfPeakRange.extend(peakRangeList)
 
@@ -345,16 +329,12 @@ def mergePeaksFromBothSamples(listOfPeakRange1, listOfPeakRange2, strand):
         for j in range(col):
             if strand == "+":
                 distance = abs(int(firstList[i][2]) - int(secondList[j][2]))
-                distanceToSortList.append(
-                    (int(firstList[i][2]), int(secondList[j][2]), distance)
-                )
+                distanceToSortList.append((int(firstList[i][2]), int(secondList[j][2]), distance))
                 peakFlag1[firstList[i][2]] = 0
                 peakFlag2[secondList[j][2]] = 0
             else:
                 distance = abs(int(firstList[i][1]) - int(secondList[j][1]))
-                distanceToSortList.append(
-                    (int(firstList[i][1]), int(secondList[j][1]), distance)
-                )
+                distanceToSortList.append((int(firstList[i][1]), int(secondList[j][1]), distance))
                 peakFlag1[firstList[i][1]] = 0
                 peakFlag2[secondList[j][1]] = 0
 
@@ -378,9 +358,7 @@ def mergePeaksFromBothSamples(listOfPeakRange1, listOfPeakRange2, strand):
 
 ###################### Two methods for processing 3-end-seq data ####################
 # done
-def Get_Peak_Positions(
-    chromosomes, ann_df, p1_dir, p2_dir, p1_name, p2_name, output_dir, extended
-):
+def Get_Peak_Positions(chromosomes, ann_df, p1_dir, p2_dir, p1_name, p2_name, output_dir, extended):
     print("Getting list of all 3'-end-seq peaks")
     output_columns = ["Chrom", "Gene", "Strand", "Start", "End", "Positions"]
     writer_list = []
@@ -395,14 +373,10 @@ def Get_Peak_Positions(
         geneList = list(set(ann_df[ann_df["chrom"] == chrom]["name2"].tolist()))
 
         for gene in geneList:
-            gene_rows = ann_df.loc[
-                (ann_df["chrom"] == chrom) & (ann_df["name2"] == gene)
-            ]
+            gene_rows = ann_df.loc[(ann_df["chrom"] == chrom) & (ann_df["name2"] == gene)]
             targetList = []
             for index, row in gene_rows.iterrows():
-                if str(row["name"].strip()).startswith("NM_") or str(
-                    row["name"].strip()
-                ).startswith("NR_"):
+                if str(row["name"].strip()).startswith("NM_") or str(row["name"].strip()).startswith("NR_"):
                     cdsStart, cdsEnd = int(row["cdsStart"]), int(row["cdsEnd"])
                     txStart, txEnd = int(row["txStart"]), int(row["txEnd"])
                     exonCount, strand = int(row["exonCount"]), row["strand"]
@@ -442,9 +416,7 @@ def Get_Peak_Positions(
                     listOfPeakRange2 = findPeakPosition(p2, r2)
 
                     if len(listOfPeakRange1) > 0 or len(listOfPeakRange2) > 0:
-                        cleavageSites = mergePeaksFromBothSamples(
-                            listOfPeakRange1, listOfPeakRange2, strand
-                        )
+                        cleavageSites = mergePeaksFromBothSamples(listOfPeakRange1, listOfPeakRange2, strand)
                         writer_list.append((chrom, gene, strand, st, en, cleavageSites))
 
         print("Chrom", chrom, "done in", round((time.time() - tt) / 60, 2), "minutes")
@@ -454,27 +426,11 @@ def Get_Peak_Positions(
 
 
 # done
-def with_PA_peaks(
-    chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir, result_filename
-):
+def with_PA_peaks(chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir, result_filename):
     df_p = pd.read_csv(os.path.join(output_dir, "Peak_positions.csv"), delimiter="\t")
 
     writer_list = []
-    output_columns = [
-        "Chrom",
-        "Gene Name",
-        "Strand",
-        "Start",
-        "End",
-        "Position",
-        "p-value",
-        "Ratio Difference",
-        "Absolute ratio difference",
-        "n1: " + g1_name,
-        "n2: " + g2_name,
-        "N1: " + g1_name,
-        "N2: " + g2_name,
-    ]
+    output_columns = ["Chrom", "Gene Name", "Strand", "Start", "End", "Position", "p-value", "Ratio Difference", "Absolute ratio difference", "n1: " + g1_name, "n2: " + g2_name, "N1: " + g1_name, "N2: " + g2_name]
 
     position_row = []
     for chrom in chromosomes:
@@ -502,39 +458,21 @@ def with_PA_peaks(
                 length = end - start + 1
                 targetLength = length
 
-                if (strand == "+" and (pos - start) <= (length * 0.85)) or (
-                    strand == "-" and (pos - start) >= (length * 0.15)
-                ):
+                if (strand == "+" and (pos - start) <= (length * 0.85)) or (strand == "-" and (pos - start) >= (length * 0.15)):
                     if strand == "+":
                         length = pos - start
                         targetLength = end - pos
-                        RC1 = CountReadCoverage(
-                            chrom, start, pos, bam_list1, position_row1
-                        )
-                        RC2 = CountReadCoverage(
-                            chrom, start, pos, bam_list2, position_row2
-                        )
-                        targetRC1 = CountReadCoverage(
-                            chrom, pos + 1, end, bam_list1, position_row1
-                        )
-                        targetRC2 = CountReadCoverage(
-                            chrom, pos + 1, end, bam_list2, position_row2
-                        )
+                        RC1 = CountReadCoverage(chrom, start, pos, bam_list1, position_row1)
+                        RC2 = CountReadCoverage(chrom, start, pos, bam_list2, position_row2)
+                        targetRC1 = CountReadCoverage(chrom, pos + 1, end, bam_list1, position_row1)
+                        targetRC2 = CountReadCoverage(chrom, pos + 1, end, bam_list2, position_row2)
                     else:
                         targetLength = pos - start
                         length = end - pos
-                        RC1 = CountReadCoverage(
-                            chrom, pos + 1, end, bam_list1, position_row1
-                        )
-                        RC2 = CountReadCoverage(
-                            chrom, pos + 1, end, bam_list2, position_row2
-                        )
-                        targetRC1 = CountReadCoverage(
-                            chrom, start, pos, bam_list1, position_row1
-                        )
-                        targetRC2 = CountReadCoverage(
-                            chrom, start, pos, bam_list2, position_row2
-                        )
+                        RC1 = CountReadCoverage(chrom, pos + 1, end, bam_list1, position_row1)
+                        RC2 = CountReadCoverage(chrom, pos + 1, end, bam_list2, position_row2)
+                        targetRC1 = CountReadCoverage(chrom, start, pos, bam_list1, position_row1)
+                        targetRC2 = CountReadCoverage(chrom, start, pos, bam_list2, position_row2)
 
                     # print(targetRC1, targetRC2, targetLength, RC1, RC2, length)
 
@@ -560,9 +498,7 @@ def with_PA_peaks(
                         exp = [n10, N1 - n10, n20, N2 - n20]
                         if 0 not in exp:
                             flag = 1
-                            res = chisquare(
-                                [n1, N1 - n1, n2, N2 - n2], f_exp=exp, ddof=1
-                            )
+                            res = chisquare([n1, N1 - n1, n2, N2 - n2], f_exp=exp, ddof=1)
                             if res[1] < signi_p:
                                 signi_p = res[1]
                                 signi_ratio_diff = ratio_diff
@@ -580,23 +516,7 @@ def with_PA_peaks(
                                 targetLength_f = targetLength
 
             if flag == 1:
-                writer_list.append(
-                    (
-                        chrom,
-                        gene,
-                        strand,
-                        start,
-                        end,
-                        signi_pos,
-                        signi_p,
-                        signi_ratio_diff,
-                        abs_ratio_diff,
-                        n1_f,
-                        n2_f,
-                        N1_f - n1_f,
-                        N2_f - n2_f,
-                    )
-                )
+                writer_list.append((chrom, gene, strand, start, end, signi_pos, signi_p, signi_ratio_diff, abs_ratio_diff, n1_f, n2_f, N1_f - n1_f, N2_f - n2_f))
 
         print("Chrom ", chrom, "done in ", round((time.time() - ss) / 60, 2), "minutes")
         # sys.exit()
@@ -611,27 +531,11 @@ def with_PA_peaks(
 
 
 # done
-def with_PA_peaks_all(
-    chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir, result_filename
-):
+def with_PA_peaks_all(chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir, result_filename):
     df_p = pd.read_csv(os.path.join(output_dir, "Peak_positions.csv"), delimiter="\t")
 
     writer_list = []
-    output_columns = [
-        "Chrom",
-        "Gene Name",
-        "Strand",
-        "Start",
-        "End",
-        "Position",
-        "p-value",
-        "Ratio Difference",
-        "Absolute ratio difference",
-        "n1: " + g1_name,
-        "n2: " + g2_name,
-        "N1: " + g1_name,
-        "N2: " + g2_name,
-    ]
+    output_columns = ["Chrom", "Gene Name", "Strand", "Start", "End", "Position", "p-value", "Ratio Difference", "Absolute ratio difference", "n1: " + g1_name, "n2: " + g2_name, "N1: " + g1_name, "N2: " + g2_name]
 
     position_row = []
     for chrom in chromosomes:
@@ -653,39 +557,21 @@ def with_PA_peaks_all(
                 length = end - start + 1
                 targetLength = length
 
-                if (strand == "+" and (pos - start) <= (length * 0.85)) or (
-                    strand == "-" and (pos - start) >= (length * 0.15)
-                ):
+                if (strand == "+" and (pos - start) <= (length * 0.85)) or (strand == "-" and (pos - start) >= (length * 0.15)):
                     if strand == "+":
                         length = pos - start
                         targetLength = end - pos
-                        RC1 = CountReadCoverage(
-                            chrom, start, pos, bam_list1, position_row1
-                        )
-                        RC2 = CountReadCoverage(
-                            chrom, start, pos, bam_list2, position_row2
-                        )
-                        targetRC1 = CountReadCoverage(
-                            chrom, pos + 1, end, bam_list1, position_row1
-                        )
-                        targetRC2 = CountReadCoverage(
-                            chrom, pos + 1, end, bam_list2, position_row2
-                        )
+                        RC1 = CountReadCoverage(chrom, start, pos, bam_list1, position_row1)
+                        RC2 = CountReadCoverage(chrom, start, pos, bam_list2, position_row2)
+                        targetRC1 = CountReadCoverage(chrom, pos + 1, end, bam_list1, position_row1)
+                        targetRC2 = CountReadCoverage(chrom, pos + 1, end, bam_list2, position_row2)
                     else:
                         targetLength = pos - start
                         length = end - pos
-                        RC1 = CountReadCoverage(
-                            chrom, pos + 1, end, bam_list1, position_row1
-                        )
-                        RC2 = CountReadCoverage(
-                            chrom, pos + 1, end, bam_list2, position_row2
-                        )
-                        targetRC1 = CountReadCoverage(
-                            chrom, start, pos, bam_list1, position_row1
-                        )
-                        targetRC2 = CountReadCoverage(
-                            chrom, start, pos, bam_list2, position_row2
-                        )
+                        RC1 = CountReadCoverage(chrom, pos + 1, end, bam_list1, position_row1)
+                        RC2 = CountReadCoverage(chrom, pos + 1, end, bam_list2, position_row2)
+                        targetRC1 = CountReadCoverage(chrom, start, pos, bam_list1, position_row1)
+                        targetRC2 = CountReadCoverage(chrom, start, pos, bam_list2, position_row2)
 
                     n1 = targetRC1 / targetLength
                     n2 = targetRC2 / targetLength
@@ -707,26 +593,8 @@ def with_PA_peaks_all(
                         exp = [n10, N1 - n10, n20, N2 - n20]
                         if 0 not in exp:
                             flag = 1
-                            res = chisquare(
-                                [n1, N1 - n1, n2, N2 - n2], f_exp=exp, ddof=1
-                            )
-                            writer_list.append(
-                                (
-                                    chrom,
-                                    gene,
-                                    strand,
-                                    start,
-                                    end,
-                                    pos,
-                                    res[1],
-                                    ratio_diff,
-                                    abs(ratio_diff),
-                                    n1,
-                                    n2,
-                                    N1 - n1,
-                                    N2 - n2,
-                                )
-                            )
+                            res = chisquare([n1, N1 - n1, n2, N2 - n2], f_exp=exp, ddof=1)
+                            writer_list.append((chrom, gene, strand, start, end, pos, res[1], ratio_diff, abs(ratio_diff), n1, n2, N1 - n1, N2 - n2))
 
         print("Chrom", chrom, "done in ", round((time.time() - ss) / 60, 2), "minutes")
 
@@ -756,14 +624,10 @@ def Get_Signal_Positions(chromosomes, ann_df, ref_genome, output_dir, extended):
             geneList = list(set(ann_df[ann_df["chrom"] == chrom]["name2"].tolist()))
 
             for gene in geneList:
-                gene_rows = ann_df.loc[
-                    (ann_df["chrom"] == chrom) & (ann_df["name2"] == gene)
-                ]
+                gene_rows = ann_df.loc[(ann_df["chrom"] == chrom) & (ann_df["name2"] == gene)]
                 targetList = []
                 for index, row in gene_rows.iterrows():
-                    if str(row["name"].strip()).startswith("NM_") or str(
-                        row["name"].strip()
-                    ).startswith("NR_"):
+                    if str(row["name"].strip()).startswith("NM_") or str(row["name"].strip()).startswith("NR_"):
                         cdsStart, cdsEnd = int(row["cdsStart"]), int(row["cdsEnd"])
                         txStart, txEnd = int(row["txStart"]), int(row["txEnd"])
                         exonCount, strand = int(row["exonCount"]), row["strand"]
@@ -821,9 +685,7 @@ def Get_Signal_Positions(chromosomes, ann_df, ref_genome, output_dir, extended):
                                     listPlus.append(st + pos)
 
                             if len(listPlus) > 0:
-                                writer_list.append(
-                                    (chrom, gene, strand, st, en, list(set(listPlus)))
-                                )
+                                writer_list.append((chrom, gene, strand, st, en, list(set(listPlus))))
 
                     elif strand == "-":
                         for st, en in revisedTargetList:
@@ -838,53 +700,21 @@ def Get_Signal_Positions(chromosomes, ann_df, ref_genome, output_dir, extended):
                                     listMinus.append(st + pos)
 
                             if len(listMinus) > 0:
-                                writer_list.append(
-                                    (chrom, gene, strand, st, en, list(set(listMinus)))
-                                )
+                                writer_list.append((chrom, gene, strand, st, en, list(set(listMinus))))
 
-            print(
-                "Chrom",
-                chrom,
-                " done in ",
-                round((time.time() - tt) / 60, 2),
-                "minutes",
-            )
+            print("Chrom", chrom, " done in ", round((time.time() - tt) / 60, 2), "minutes")
 
     df_output = pd.DataFrame(writer_list, columns=output_columns)
     df_output.to_csv(filename, sep="\t")
 
 
 # done
-def with_PAS_signal(
-    chromosomes,
-    input1_dir,
-    input2_dir,
-    s1_namelist,
-    s2_namelist,
-    g1,
-    g2,
-    output_dir,
-    result_filename,
-):
+def with_PAS_signal(chromosomes, input1_dir, input2_dir, s1_namelist, s2_namelist, g1, g2, output_dir, result_filename):
     len1, len2 = len(s1_namelist), len(s2_namelist)
 
     df_p = pd.read_csv(os.path.join(output_dir, "Signal_positions.csv"), delimiter="\t")
     writer_list = []
-    output_columns = [
-        "Chrom",
-        "Gene",
-        "Strand",
-        "Start",
-        "End",
-        "Position",
-        "p-value",
-        "Ratio Difference",
-        "Absolute ratio difference",
-        "n1: " + g1,
-        "n2: " + g2,
-        "N1: " + g1,
-        "N2: " + g2,
-    ]
+    output_columns = ["Chrom", "Gene", "Strand", "Start", "End", "Position", "p-value", "Ratio Difference", "Absolute ratio difference", "n1: " + g1, "n2: " + g2, "N1: " + g1, "N2: " + g2]
 
     position_row = []
     for chrom in chromosomes:
@@ -920,27 +750,11 @@ def with_PAS_signal(
 
                 s1_n, s1_N, s2_n, s2_N = 0, 0, 0, 0
                 for sample1 in s1_namelist:
-                    n, N = Generate_coverage(
-                        chrom,
-                        start,
-                        end,
-                        pos,
-                        strand,
-                        s1_bam_list[sample1],
-                        s1_position_row[sample1],
-                    )
+                    n, N = Generate_coverage(chrom, start, end, pos, strand, s1_bam_list[sample1], s1_position_row[sample1])
                     s1_n += n
                     s1_N += N
                 for sample2 in s2_namelist:
-                    n, N = Generate_coverage(
-                        chrom,
-                        start,
-                        end,
-                        pos,
-                        strand,
-                        s2_bam_list[sample2],
-                        s2_position_row[sample2],
-                    )
+                    n, N = Generate_coverage(chrom, start, end, pos, strand, s2_bam_list[sample2], s2_position_row[sample2])
                     s2_n += n
                     s2_N += N
 
@@ -963,9 +777,7 @@ def with_PAS_signal(
                     exp = [n10, N1 - n10, n20, N2 - n20]
                     if 0 not in exp:
                         flag = 1
-                        res, p_value = chisquare(
-                            [n1, N1 - n1, n2, N2 - n2], f_exp=exp, ddof=1
-                        )
+                        res, p_value = chisquare([n1, N1 - n1, n2, N2 - n2], f_exp=exp, ddof=1)
                         # print("res, p_value", res, p_value)
                         if p_value < signi_p:
                             signi_p = p_value
@@ -978,26 +790,8 @@ def with_PAS_signal(
                             signi_pos = pos
 
             if flag == 1:
-                writer_list.append(
-                    (
-                        chrom,
-                        gene,
-                        strand,
-                        start,
-                        end,
-                        signi_pos,
-                        signi_p,
-                        signi_ratio_diff,
-                        abs_ratio_diff,
-                        n1_f,
-                        n2_f,
-                        N1_f - n1_f,
-                        N2_f - n2_f,
-                    )
-                )
-        print(
-            "Chrom ", chrom, " done in ", round((time.time() - ss) / 60, 2), "minutes"
-        )
+                writer_list.append((chrom, gene, strand, start, end, signi_pos, signi_p, signi_ratio_diff, abs_ratio_diff, n1_f, n2_f, N1_f - n1_f, N2_f - n2_f))
+        print("Chrom ", chrom, " done in ", round((time.time() - ss) / 60, 2), "minutes")
 
     df_output = pd.DataFrame(writer_list, columns=output_columns)
     df_output.sort_values(by=["Chrom", "Gene"], inplace=True)
@@ -1008,36 +802,12 @@ def with_PAS_signal(
 
 
 # done
-def with_PAS_signal_all(
-    chromosomes,
-    input1_dir,
-    input2_dir,
-    s1_namelist,
-    s2_namelist,
-    g1,
-    g2,
-    output_dir,
-    result_filename,
-):
+def with_PAS_signal_all(chromosomes, input1_dir, input2_dir, s1_namelist, s2_namelist, g1, g2, output_dir, result_filename):
     len1, len2 = len(s1_namelist), len(s2_namelist)
 
     df_p = pd.read_csv(os.path.join(output_dir, "Signal_positions.csv"), delimiter="\t")
     writer_list = []
-    output_columns = [
-        "Chrom",
-        "Gene",
-        "Strand",
-        "Start",
-        "End",
-        "Position",
-        "p-value",
-        "Ratio Difference",
-        "Absolute ratio difference",
-        "n1: " + g1,
-        "n2: " + g2,
-        "N1: " + g1,
-        "N2: " + g2,
-    ]
+    output_columns = ["Chrom", "Gene", "Strand", "Start", "End", "Position", "p-value", "Ratio Difference", "Absolute ratio difference", "n1: " + g1, "n2: " + g2, "N1: " + g1, "N2: " + g2]
 
     position_row = []
     for chrom in chromosomes:
@@ -1067,27 +837,11 @@ def with_PAS_signal_all(
 
                 s1_n, s1_N, s2_n, s2_N = 0, 0, 0, 0
                 for sample1 in s1_namelist:
-                    n, N = Generate_coverage(
-                        chrom,
-                        start,
-                        end,
-                        pos,
-                        strand,
-                        s1_bam_list[sample1],
-                        s1_position_row[sample1],
-                    )
+                    n, N = Generate_coverage(chrom, start, end, pos, strand, s1_bam_list[sample1], s1_position_row[sample1])
                     s1_n += n
                     s1_N += N
                 for sample2 in s2_namelist:
-                    n, N = Generate_coverage(
-                        chrom,
-                        start,
-                        end,
-                        pos,
-                        strand,
-                        s2_bam_list[sample2],
-                        s2_position_row[sample2],
-                    )
+                    n, N = Generate_coverage(chrom, start, end, pos, strand, s2_bam_list[sample2], s2_position_row[sample2])
                     s2_n += n
                     s2_N += N
 
@@ -1109,26 +863,8 @@ def with_PAS_signal_all(
                     exp = [n10, N1 - n10, n20, N2 - n20]
                     if 0 not in exp:
                         flag = 1
-                        res, p_value = chisquare(
-                            [n1, N1 - n1, n2, N2 - n2], f_exp=exp, ddof=1
-                        )
-                        writer_list.append(
-                            (
-                                chrom,
-                                gene,
-                                strand,
-                                start,
-                                end,
-                                pos,
-                                p_value,
-                                ratio_diff,
-                                abs(ratio_diff),
-                                n1,
-                                n2,
-                                N1 - n1,
-                                N2 - n2,
-                            )
-                        )
+                        res, p_value = chisquare([n1, N1 - n1, n2, N2 - n2], f_exp=exp, ddof=1)
+                        writer_list.append((chrom, gene, strand, start, end, pos, p_value, ratio_diff, abs(ratio_diff), n1, n2, N1 - n1, N2 - n2))
 
         print("Chrom", chrom, "done in ", round((time.time() - ss) / 60, 2), "minutes")
 

@@ -552,7 +552,7 @@ def with_PA_peaks_all(chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir,
 							res = chisquare([n1, N1-n1, n2, N2-n2], f_exp=exp, ddof = 1)
 							writer_list.append((chrom, gene, strand, start, end, pos, res[1], ratio_diff, abs(ratio_diff), n1, n2, N1-n1, N2-n2))
 
-		print("Chrom", chrom, "done in ", roudn((time.time() - ss)/60, 2), "minutes")
+		print("Chrom", chrom, "done in ", round((time.time() - ss)/60, 2), "minutes")
 	
 	df_output = pd.DataFrame(writer_list, columns=output_columns)
 	df_output.sort_values(by=['Chrom', 'Gene'], inplace=True)
