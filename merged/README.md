@@ -5,7 +5,7 @@ APA-Scan detects the potential Alternative Polyadenylation (APA) events in the d
 
 ## Paralellization
 
-1. APA-Scan now supports parallel processing to speed up the quantification process. Users can specify the number of **cores** to use for parallel processing in the configuration.ini file. The default value is NULL, which will run the program in sequential mode.
+1. APA-Scan now supports parallel processing to speed up the quantification process. Users can specify the number of **cores** to use for parallel processing in the configuration.ini file. The default value is NULL, which will run the program in sequential mode. Users can also specify a MAX value to use all available cores on the machine.
 
 ## Change in Samtools
 
