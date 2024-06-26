@@ -13,6 +13,7 @@ import numpy as np
 import methods
 import glob, os
 import configparser
+from multiprocessing import cpu_count
 
 (speciesFlag, inputFlag, outFlag, pasFlag) = (0, 0, 0, 0)
 
@@ -41,6 +42,9 @@ if output_dir[-1] != "/":
 	output_dir += "/"
 extended = config['Extended_3UTR']['extended']
 all_events = config['All_events']['All']
+cores = config['CORES']['cores']
+if cores == 'NULL':
+    cores = cpu_count()
 
 os.makedirs(output_dir, exist_ok=True)
 inp_annotation = config['ANNOTATION']['annotation']
@@ -51,6 +55,7 @@ print("RNA-seq input 2 dir:", input2_dir)
 print("3'-end-seq input 1 dir:", pasSeq_dir1)
 print("3'-end-seq input 2 dir:", pasSeq_dir2)
 print("Output Dir:", output_dir) 
+print("Cores:", cores)	
 print("Annotation:", inp_annotation, ref_genome, "\n")
 print("Loading annotation information ...")
 ann_df = pd.read_csv(inp_annotation, delimiter='\t')
@@ -63,10 +68,10 @@ if '#name' in ann_df.columns:
 print("Generating read coverage files from the RNA-seq data...")
 for sample1 in os.listdir(input1_dir):
 	if sample1.endswith('.bam'):
-		methods.SamtoText(input1_dir, sample1, chromosomes)
+		methods.SamtoText(input1_dir, sample1, chromosomes, cores)
 for sample2 in os.listdir(input2_dir):
 	if sample2.endswith('.bam'):
-		methods.SamtoText(input2_dir, sample2, chromosomes)
+		methods.SamtoText(input2_dir, sample2, chromosomes, cores)
 
 
 result_filename = "APA_Scan_"+g1_name+"_Vs_"+g2_name
@@ -86,11 +91,11 @@ else:
 	print("Generating read coverage files for the 3'-end-seq data...")
 	for sample1 in os.listdir(pasSeq_dir1):
 		if sample1.endswith('.bam'):
-			methods.SamtoText(pasSeq_dir1, sample1, chromosomes)
+			methods.SamtoText(pasSeq_dir1, sample1, chromosomes, cores)
 
 	for sample2 in os.listdir(pasSeq_dir2):
 		if sample2.endswith('.bam'):
-			methods.SamtoText(pasSeq_dir2, sample2, chromosomes)
+			methods.SamtoText(pasSeq_dir2, sample2, chromosomes, cores)
 	
 	p1_namelist = list_dirs(pasSeq_dir1)
 	p2_namelist = list_dirs(pasSeq_dir2)
@@ -106,6 +111,7 @@ else:
 
 print("Total time:", round((time.time() - startTime)/60, 2), "minutes.")
 read_file = pd.read_csv(os.path.join(output_dir, result_filename+".csv"), delimiter = '\t')
+read_file.sort_values(by=['Chrom', 'Gene'], inplace=True)
 read_file.to_excel (os.path.join(output_dir, result_filename+".xlsx"), index = None, header=True)
 #os.remove(os.path.join(output_dir, result_filename+".csv"))
 

@@ -44,14 +44,15 @@ def bi_contains(lst, item):
 def SamtoText(input_path, bamfile, chromosomes):
 	output_dir = os.path.join(input_path, bamfile[:-4])
 	os.makedirs(output_dir, exist_ok=True)
+	samtools_dir = "/usr/bin/samtools-0.1.8/samtools"
 	cwd = os.getcwd()
-	cmd1 = os.path.join(cwd, "samtools")+" index "+os.path.join(input_path, bamfile)		# make samtools index bamfile.bam.bai
+	cmd1 = samtools_dir+" index "+os.path.join(input_path, bamfile)		# make samtools index bamfile.bam.bai
 	os.system(cmd1)
 
 	print(bamfile,"...")
 	for chrom in chromosomes:
-		cmd2 = os.path.join(cwd, "samtools")+" view -b "+os.path.join(input_path, bamfile)+" "+chrom+" -o "+os.path.join(output_dir, chrom+".bam")
-		cmd3 = os.path.join(cwd, "samtools")+" pileup "+os.path.join(output_dir, chrom+".bam")+" | cut -f 2,4 > "+os.path.join(output_dir, chrom+".txt")   ### Need to use pileup, not mpileup
+		cmd2 = samtools_dir+" view -b "+os.path.join(input_path, bamfile)+" "+chrom+" -o "+os.path.join(output_dir, chrom+".bam")
+		cmd3 = samtools_dir+" pileup "+os.path.join(output_dir, chrom+".bam")+" | cut -f 2,4 > "+os.path.join(output_dir, chrom+".txt")   ### Need to use pileup, not mpileup
 		command = cmd2+";"+cmd3
 		os.system(command)
 	return
@@ -378,7 +379,8 @@ def Get_Peak_Positions(chromosomes, ann_df, p1_dir, p2_dir, p1_name, p2_name, ou
 		print("Chrom", chrom, "done in", round((time.time() - tt)/60, 2), "minutes")
 
 	df_output = pd.DataFrame(writer_list, columns=output_columns)
-	df_output.to_csv(filename, sep='\t')
+	df_output.to_csv(filename, sep="\t")
+
 
 #done
 def with_PA_peaks(chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir, result_filename):
@@ -477,6 +479,8 @@ def with_PA_peaks(chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir, res
 		#sys.exit()
 
 	df_output = pd.DataFrame(writer_list, columns=output_columns)
+	df_output.sort_values(by=['Chrom', 'Gene'], inplace=True)
+	df_output.reset_index(drop=True, inplace=True)
 	df_output.to_csv(os.path.join(output_dir, result_filename+".csv"), sep='\t')
 
 	print("APA-Scan quantification done.")
@@ -551,6 +555,8 @@ def with_PA_peaks_all(chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir,
 		print("Chrom", chrom, "done in ", roudn((time.time() - ss)/60, 2), "minutes")
 	
 	df_output = pd.DataFrame(writer_list, columns=output_columns)
+	df_output.sort_values(by=['Chrom', 'Gene'], inplace=True)
+	df_output.reset_index(drop=True, inplace=True)
 	df_output.to_csv(result_filename, sep='\t')
 	print("APA-Scan quantification done.")
 	return
@@ -742,6 +748,8 @@ def with_PAS_signal(chromosomes, input1_dir, input2_dir, s1_namelist, s2_namelis
 		print("Chrom ", chrom, " done in ", round((time.time() - ss)/60, 2), "minutes")
 
 	df_output = pd.DataFrame(writer_list, columns=output_columns)
+	df_output.sort_values(by=['Chrom', 'Gene'], inplace=True)
+	df_output.reset_index(drop=True, inplace=True)
 	df_output.to_csv(os.path.join(output_dir, result_filename+".csv"), sep='\t')
 	print("APA-Scan quantification done.")
 	return
@@ -814,6 +822,8 @@ def with_PAS_signal_all(chromosomes, input1_dir, input2_dir, s1_namelist, s2_nam
 		print("Chrom", chrom, "done in ",  round((time.time() - ss)/60, 2), "minutes")
 
 	df_output = pd.DataFrame(writer_list, columns=output_columns)
+	df_output.sort_values(by=['Chrom', 'Gene'], inplace=True)
+	df_output.reset_index(drop=True, inplace=True)
 	df_output.to_csv(os.path.join(output_dir, result_filename+".csv"), sep='\t')
 	print("APA-Scan quantification done.")
 	return
