@@ -522,7 +522,7 @@ def with_PA_peaks(chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir, res
         # sys.exit()
 
     df_output = pd.DataFrame(writer_list, columns=output_columns)
-    df_output.sort_values(by=["Chrom", "Gene"], inplace=True)
+    df_output.sort_values(by=["Chrom", "Gene Name"], inplace=True)
     df_output.reset_index(drop=True, inplace=True)
     df_output.to_csv(os.path.join(output_dir, result_filename + ".csv"), sep="\t")
 
@@ -599,7 +599,7 @@ def with_PA_peaks_all(chromosomes, s1_dir, s2_dir, g1_name, g2_name, output_dir,
         print("Chrom", chrom, "done in ", round((time.time() - ss) / 60, 2), "minutes")
 
     df_output = pd.DataFrame(writer_list, columns=output_columns)
-    df_output.sort_values(by=["Chrom", "Gene"], inplace=True)
+    df_output.sort_values(by=["Chrom", "Gene Name"], inplace=True)
     df_output.reset_index(drop=True, inplace=True)
     df_output.to_csv(result_filename, sep="\t")
     print("APA-Scan quantification done.")

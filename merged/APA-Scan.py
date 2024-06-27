@@ -49,7 +49,7 @@ cores = config["CORES"]["cores"]
 if cores == "NULL":
     parallel = False
 if cores == "1":
-    print("Running with one core is slower than simply running the code in sequential mode. Running APA-Scan sequentially instead")
+    print("Running with one core is slower than simply running the code in sequential mode. Running APA-Scan sequentially .")
     parallel = False
 
 # Check for MAX case
